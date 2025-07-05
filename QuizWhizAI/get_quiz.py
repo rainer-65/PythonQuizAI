@@ -1,42 +1,95 @@
 import json
-from typing import Dict
+import random
+from typing import List
+from typing import Optional, Dict
 
-import openai
+from openai import OpenAI, OpenAIError
+from openai.types.chat import ChatCompletionMessageParam
+from pydantic import BaseModel
+from pydantic import ValidationError
 
-chat_history = [
+
+# --- Pydantic Model for Quiz Question ---
+class QuizQuestion(BaseModel):
+    question: str
+    options: List[str]
+    answer: str
+    explanation: str
+
+
+# --- Initial prompt (Priming the assistant) ---
+chat_history: List[ChatCompletionMessageParam] = [
     {
         "role": "system",
-        "content": "You are a REST API server with an endpoint /generate-random-question/:topic, which generates unique random quiz question in json data.",
+        "content": (
+            "You are a REST API server with an endpoint /generate-random-question/:topic. "
+            "The endpoint returns a random Python quiz question as JSON with the following fields:\n"
+            "- question (string)\n"
+            "- options (list of strings)\n"
+            "- answer (string, must match one of the options)\n"
+            "- explanation (string)"
+        ),
     },
-    {"role": "user", "content": "GET /generate-random-question/devops"},
+    {
+        "role": "user",
+        "content": "GET /generate-random-question/variables"
+    },
     {
         "role": "assistant",
-        "content": '\n\n{\n    "question": "What is the difference between Docker and Kubernetes?",\n    "options": ["Docker is a containerization platform whereas Kubernetes is a container orchestration platform", " Kubernetes is a containerization platform whereas Docker is a container orchestration platform", "Both are containerization platforms", "Neither are containerization platforms"],\n    "answer": "Docker is a containerization platform whereas Kubernetes is a container orchestration platform",\n    "explanation": "Docker helps you create, deploy, and run applications within containers, while Kubernetes helps you manage collections of containers, automating their deployment, scaling, and more."\n}',
-    },
-    {"role": "user", "content": "GET /generate-random-question/jenkins"},
-    {
-        "role": "assistant",
-        "content": '\n\n{\n    "question": "What is Jenkins?",\n    "options": ["A continuous integration server", "A database management system", "A programming language", "An operating system"],\n    "answer": "A continuous integration server",\n    "explanation": "Jenkins is an open source automation server that helps to automate parts of the software development process such as building, testing, and deploying code."\n}',
-    },
+        "content": '''{
+    "question": "Which of the following is a valid variable name in Python?",
+    "options": ["2nd_var", "my-var", "_value", "None"],
+    "answer": "_value",
+    "explanation": "Variable names must begin with a letter or underscore and cannot be a reserved keyword like 'None'."
+}'''
+    }
 ]
 
 
-def get_quiz_from_topic(topic: str, api_key: str) -> Dict[str, str]:
+def get_quiz_from_topic(topic: str, api_key: str) -> Optional[Dict[str, str]]:
     global chat_history
-    openai.api_key = api_key
-    current_chat = chat_history[:]
-    current_user_message = {
+
+    client = OpenAI(api_key=api_key)
+
+    current_user_message: ChatCompletionMessageParam = {
         "role": "user",
         "content": f"GET /generate-random-question/{topic}",
     }
-    current_chat.append(current_user_message)
-    chat_history.append(current_user_message)
 
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo", messages=current_chat
-    )
-    quiz = response["choices"][0]["message"]["content"]
-    current_assistent_message = {"role": "assistant", "content": quiz}
-    chat_history.append(current_assistent_message)
-    print(f"Response:\n{quiz}")
-    return json.loads(quiz)
+    current_chat = chat_history + [current_user_message]
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=current_chat
+        )
+
+        content = response.choices[0].message.content
+        print(f"Response:\n{content}")
+
+        # Append conversation to history
+        assistant_message: ChatCompletionMessageParam = {
+            "role": "assistant",
+            "content": content
+        }
+        chat_history.append(current_user_message)
+        chat_history.append(assistant_message)
+
+        # Parse the raw content into a validated object
+        quiz_question = QuizQuestion.parse_raw(content)
+
+        # Shuffle options and preserve correct answer by value
+        options = quiz_question.options
+        correct_answer = quiz_question.answer
+
+        if correct_answer not in options:
+            raise ValueError("Answer is not among the provided options.")
+
+        random.shuffle(options)
+        quiz_question.options = options  # assign back
+
+        return quiz_question.dict()
+
+    except (OpenAIError, json.JSONDecodeError, ValidationError, ValueError) as e:
+        print(f"Error: {e}")
+        return None
