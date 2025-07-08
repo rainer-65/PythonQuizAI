@@ -5,7 +5,8 @@ import openai
 import streamlit as st
 from dotenv import load_dotenv
 
-from firebase_service import initialize_firebase, save_quiz_question, get_random_quiz_questions
+from firebase_service import initialize_firebase, save_quiz_question, get_random_quiz_questions, \
+    delete_all_quiz_questions, get_quiz_question_count
 from get_quiz import get_quiz_from_topic
 
 # Initialize Firebase (do this once)
@@ -30,7 +31,7 @@ st.markdown("---")
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 
-# Initialize session state
+# --- Initialize session state ---
 for key, default in {
     "questions": [], "answers": {}, "current_question": 0,
     "right_answers": 0, "wrong_answers": 0, "quiz_complete": False
@@ -38,14 +39,14 @@ for key, default in {
     if key not in st.session_state:
         st.session_state[key] = default
 
-# --- Sidebar ---
+# --- SIDEBAR ---
 topics = [
     'Comments in Python', 'Variables in Python',
     'Reading input from the keyboard in Python', 'Strings in Python',
     'Print in Python', 'F-Strings in Python'
 ]
 st.sidebar.markdown(
-    "<span style='font-size:22px; '>Select quiz topic</span>",
+    "<span style='font-size:18px; '>Select quiz topic</span>",
     unsafe_allow_html=True
 )
 topic = st.sidebar.selectbox(
@@ -55,6 +56,11 @@ topic = st.sidebar.selectbox(
     label_visibility="collapsed"
 )
 
+# ✅ --- Display current DB entry count in sidebar ---
+question_count = get_quiz_question_count()
+st.sidebar.info(f"📦 Total number of quiz questions in DB: {question_count}")
+
+# --- Start Quiz ---
 if st.sidebar.button("Start Quiz"):
     # Reset session state
     st.session_state.answers = {}
@@ -74,6 +80,7 @@ if st.sidebar.button("Start Quiz"):
     except openai.error.AuthenticationError:
         st.error("Invalid API key.")
 
+# --- Loading random questions ---
 if st.sidebar.button("🎲 Load 10 Random Questions"):
     st.session_state.answers = {}
     st.session_state.current_question = 0
@@ -90,6 +97,15 @@ if st.sidebar.button("🎲 Load 10 Random Questions"):
         st.session_state.questions = random_questions
         st.session_state.max_questions_override = len(random_questions)
         st.success(f"{len(random_questions)} random questions loaded!")
+
+# --- Deleting all questions ---
+if st.sidebar.button("🧹 Delete All Questions"):
+    with st.spinner("Deleting all questions..."):
+        success = delete_all_quiz_questions()
+        if success:
+            st.sidebar.success("All quiz questions deleted.")
+        else:
+            st.sidebar.error("Failed to delete questions.")
 
 
 def display_question():
@@ -196,15 +212,42 @@ def show_summary():
 
 # --- Navigation functions ---
 def next_question():
-    # Use override if random questions were loaded, else default to MAX_QUESTIONS
     question_limit = st.session_state.get("max_questions_override", MAX_QUESTIONS)
+    current_index = st.session_state.current_question
 
-    if st.session_state.current_question + 1 >= question_limit:
+    # 🚨 If unanswered, mark as incorrect and warn the user
+    if current_index not in st.session_state.answers:
+        st.markdown(
+            """
+            <div style="
+                background-color: #fff3cd;
+                border-left: 6px solid #ffecb5;
+                padding: 12px 16px 12px 8px;
+                margin-bottom: 1.2rem;
+                border-radius: 8px;
+                font-size: 14px;
+                line-height: 1.5;
+                width: 100%;
+                box-sizing: border-box;
+                display: block;
+            ">
+                <strong>⚠️ Skipped!</strong> This question was not answered and has been marked as incorrect.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        st.session_state.wrong_answers += 1
+
+    # Check if we're at the end of the quiz
+    if current_index + 1 >= question_limit:
         st.session_state.quiz_complete = True
         return
 
+    # Move to the next question
     st.session_state.current_question += 1
 
+    # If the next question hasn't been loaded yet, fetch it
     if st.session_state.current_question >= len(st.session_state.questions):
         try:
             next_q = get_quiz_from_topic(topic, api_key)

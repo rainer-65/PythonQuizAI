@@ -14,8 +14,15 @@ def initialize_firebase(credential_path: str):
 def save_quiz_question(topic: str, question_data: dict) -> str:
     try:
         db = firestore.client()
-        collection_ref = db.collection("quiz_questions").document(topic).collection("questions")
-        doc_ref = collection_ref.add(question_data)
+
+        # Flatten structure — add topic to question data
+        question_data_with_topic = {
+            **question_data,
+            "topic": topic
+        }
+
+        # Save directly to top-level "quiz_questions" collection
+        doc_ref = db.collection("quiz_questions").add(question_data_with_topic)
         return doc_ref[1].id
     except Exception as e:
         print(f"❌ Failed to save question: {e}")
@@ -25,18 +32,33 @@ def save_quiz_question(topic: str, question_data: dict) -> str:
 def get_random_quiz_questions(limit=10) -> list:
     try:
         db = firestore.client()
-        all_questions = []
-
-        topics = db.collection("quiz_questions").stream()
-        for topic_doc in topics:
-            questions_ref = db.collection("quiz_questions").document(topic_doc.id).collection("questions")
-            questions = questions_ref.stream()
-            for q in questions:
-                question_data = q.to_dict()
-                if question_data:
-                    all_questions.append(question_data)
-
-        return random.sample(all_questions, min(limit, len(all_questions)))
+        docs = db.collection("quiz_questions").stream()
+        questions = [doc.to_dict() for doc in docs if doc.to_dict()]
+        return random.sample(questions, min(limit, len(questions)))
     except Exception as e:
         print(f"❌ Failed to retrieve questions: {e}")
         return []
+
+
+def delete_all_quiz_questions():
+    try:
+        db = firestore.client()
+        docs = db.collection("quiz_questions").stream()
+        for doc in docs:
+            doc.reference.delete()
+        print("🧹 All quiz questions deleted.")
+        return True
+    except Exception as e:
+        print(f"❌ Failed to delete quiz questions: {e}")
+        return False
+
+
+def get_quiz_question_count() -> int:
+    try:
+        db = firestore.client()
+        docs = db.collection("quiz_questions").stream()
+        count = sum(1 for _ in docs)
+        return count
+    except Exception as e:
+        print(f"❌ Failed to count quiz questions: {e}")
+        return 0
