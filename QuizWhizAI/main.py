@@ -9,7 +9,7 @@ from firebase_service import initialize_firebase, save_quiz_question, get_random
     delete_all_quiz_questions, get_quiz_question_count
 from get_quiz import get_quiz_from_topic
 
-# Initialize Firebase (do this once)
+# --- Initialize Firebase (do this once) ---
 initialize_firebase("firebase_credentials.json")
 
 # --- Constants ---
@@ -56,6 +56,9 @@ topic = st.sidebar.selectbox(
     label_visibility="collapsed"
 )
 
+# --- ✅ Toggle: Enable/Disable saving to Firestore ---
+save_to_db = st.sidebar.checkbox("💾 Save questions to DB", value=True)
+
 # ✅ --- Display current DB entry count in sidebar ---
 question_count = get_quiz_question_count()
 st.sidebar.info(f"📦 Total number of quiz questions in DB: {question_count}")
@@ -76,7 +79,8 @@ if st.sidebar.button("Start Quiz"):
             st.error("Failed to load a quiz question. Please try again.")
         else:
             st.session_state.questions.append(first_question)
-            save_quiz_question(topic, first_question)  # 🔥 Save to Firebase
+            if save_to_db:
+                save_quiz_question(topic, first_question)
     except openai.error.AuthenticationError:
         st.error("Invalid API key.")
 
@@ -193,6 +197,7 @@ def show_summary():
     """)
 
     if st.button("🔁 Restart Quiz"):
+        # Reset session state
         st.session_state.answers = {}
         st.session_state.current_question = 0
         st.session_state.questions = []
@@ -205,7 +210,8 @@ def show_summary():
             first_question = get_quiz_from_topic(topic, api_key)
             if first_question and isinstance(first_question, dict):
                 st.session_state.questions.append(first_question)
-                save_quiz_question(topic, first_question)  # 🔥 Save on restart too
+                if save_to_db:
+                    save_quiz_question(topic, first_question)
         except openai.error.AuthenticationError:
             st.error("Invalid API key.")
 
@@ -219,35 +225,21 @@ def next_question():
     if current_index not in st.session_state.answers:
         st.markdown(
             """
-            <div style="
-                background-color: #fff3cd;
-                border-left: 6px solid #ffecb5;
-                padding: 12px 16px 12px 8px;
-                margin-bottom: 1.2rem;
-                border-radius: 8px;
-                font-size: 14px;
-                line-height: 1.5;
-                width: 100%;
-                box-sizing: border-box;
-                display: block;
-            ">
+            <div style="background-color: #fff3cd; border-left: 6px solid #ffecb5; padding: 12px 16px 12px 8px; 
+            margin-bottom: 1.2rem; border-radius: 8px; font-size: 14px; line-height: 1.5;">
                 <strong>⚠️ Skipped!</strong> This question was not answered and has been marked as incorrect.
             </div>
             """,
             unsafe_allow_html=True
         )
-
         st.session_state.wrong_answers += 1
 
-    # Check if we're at the end of the quiz
     if current_index + 1 >= question_limit:
         st.session_state.quiz_complete = True
         return
 
-    # Move to the next question
     st.session_state.current_question += 1
 
-    # If the next question hasn't been loaded yet, fetch it
     if st.session_state.current_question >= len(st.session_state.questions):
         try:
             next_q = get_quiz_from_topic(topic, api_key)
@@ -256,7 +248,8 @@ def next_question():
                 st.session_state.current_question -= 1
                 return
             st.session_state.questions.append(next_q)
-            save_quiz_question(topic, next_q)
+            if save_to_db:
+                save_quiz_question(topic, next_q)
         except openai.error.AuthenticationError:
             st.error("Invalid API key.")
             st.session_state.current_question -= 1
