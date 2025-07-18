@@ -11,6 +11,29 @@ def initialize_firebase(credential_path: str):
         print("✅ Firebase initialized.")
 
 
+def are_questions_identical(q1: dict, q2: dict) -> bool:
+    return (
+            q1.get("question") == q2.get("question")
+            and q1.get("answer") == q2.get("answer")
+            and set(q1.get("options", [])) == set(q2.get("options", []))
+    )
+
+
+def is_duplicate_question(new_question: dict) -> bool:
+    try:
+        db = firestore.client()
+        docs = db.collection("quiz_questions").stream()
+
+        for doc in docs:
+            existing = doc.to_dict()
+            if are_questions_identical(existing, new_question):
+                return True
+        return False
+    except Exception as e:
+        print(f"❌ Error checking duplicates: {e}")
+        return False
+
+
 def save_quiz_question(topic: str, question_data: dict) -> str:
     try:
         db = firestore.client()

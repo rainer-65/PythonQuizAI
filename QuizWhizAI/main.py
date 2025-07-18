@@ -6,7 +6,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from firebase_service import initialize_firebase, save_quiz_question, get_random_quiz_questions, \
-    delete_all_quiz_questions, get_quiz_question_count
+    delete_all_quiz_questions, get_quiz_question_count, is_duplicate_question
 from get_quiz import get_quiz_from_topic
 
 # --- Initialize Firebase (do this once) ---
@@ -79,7 +79,7 @@ if st.sidebar.button("Start Quiz"):
             st.error("Failed to load a quiz question. Please try again.")
         else:
             st.session_state.questions.append(first_question)
-            if save_to_db:
+            if save_to_db and not is_duplicate_question(first_question):
                 save_quiz_question(topic, first_question)
     except openai.error.AuthenticationError:
         st.error("Invalid API key.")
@@ -210,7 +210,7 @@ def show_summary():
             first_question = get_quiz_from_topic(topic, api_key)
             if first_question and isinstance(first_question, dict):
                 st.session_state.questions.append(first_question)
-                if save_to_db:
+                if save_to_db and not is_duplicate_question(first_question):
                     save_quiz_question(topic, first_question)
         except openai.error.AuthenticationError:
             st.error("Invalid API key.")
@@ -248,8 +248,9 @@ def next_question():
                 st.session_state.current_question -= 1
                 return
             st.session_state.questions.append(next_q)
-            if save_to_db:
+            if save_to_db and not is_duplicate_question(next_q):
                 save_quiz_question(topic, next_q)
+
         except openai.error.AuthenticationError:
             st.error("Invalid API key.")
             st.session_state.current_question -= 1
