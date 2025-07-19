@@ -263,6 +263,8 @@ def show_summary():
                     save_quiz_question(topic, first_question)
         except openai.error.AuthenticationError:
             st.error("Invalid API key.")
+            return
+        st.rerun()  # ✅ Force a rerun to show the first question immediately
 
 
 # --- Navigation functions ---
@@ -309,27 +311,14 @@ def next_question():
             st.session_state.current_question -= 1
 
 
-def prev_question():
-    if st.session_state.current_question > 0:
-        st.session_state.current_question -= 1
-
-        # ⏱️ Reset timer when going back to a previous question
-        st.session_state.question_start_time = time.time()
-        st.session_state.timer_expired = False
-
-
 # --- Layout: Quiz and navigation ---
-col1, col2, col3 = st.columns([1, 6, 1])
+col_main, col_next = st.columns([8, 1])  # Wider main area, slim right column
 
-with col1:
-    if not st.session_state.quiz_complete and st.button("Prev"):
-        prev_question()
-
-with col3:
+with col_next:
     if not st.session_state.quiz_complete and st.button("Next"):
         next_question()
 
-with col2:
+with col_main:
     if st.session_state.quiz_complete:
         show_summary()
     else:
