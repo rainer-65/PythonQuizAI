@@ -109,14 +109,27 @@ if st.sidebar.button("🎲 Load 10 Random Questions"):
         st.session_state.max_questions_override = len(random_questions)
         st.success(f"{len(random_questions)} random questions loaded!")
 
-# --- Deleting all questions ---
+# --- Deleting all questions with confirmation ---
+if "confirm_delete" not in st.session_state:
+    st.session_state.confirm_delete = False
+
 if st.sidebar.button("🧹 Delete All Questions"):
-    with st.spinner("Deleting all questions..."):
-        success = delete_all_quiz_questions()
-        if success:
-            st.sidebar.success("All quiz questions deleted.")
-        else:
-            st.sidebar.error("Failed to delete questions.")
+    st.session_state.confirm_delete = True
+
+if st.session_state.confirm_delete:
+    st.sidebar.warning("⚠️ This will delete *all* quiz questions. Are you sure?")
+    col_del1, col_del2 = st.sidebar.columns(2)
+    if col_del1.button("✅ Yes, Delete"):
+        with st.spinner("Deleting all questions..."):
+            success = delete_all_quiz_questions()
+            if success:
+                st.sidebar.success("All quiz questions deleted.")
+            else:
+                st.sidebar.error("Failed to delete questions.")
+        st.session_state.confirm_delete = False
+    if col_del2.button("❌ Cancel"):
+        st.sidebar.info("Deletion cancelled.")
+        st.session_state.confirm_delete = False
 
 
 def display_question():
