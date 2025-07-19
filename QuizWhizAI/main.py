@@ -1,5 +1,6 @@
 import json
 import os
+import time
 
 import openai
 import streamlit as st
@@ -55,6 +56,12 @@ topic = st.sidebar.selectbox(
     index=0,
     label_visibility="collapsed"
 )
+
+# --- Timer-related session state ---
+if "question_start_time" not in st.session_state:
+    st.session_state.question_start_time = time.time()
+if "timer_expired" not in st.session_state:
+    st.session_state.timer_expired = False
 
 # --- ✅ Toggle: Enable/Disable saving to Firestore ---
 save_to_db = st.sidebar.checkbox("💾 Save questions to DB", value=True)
@@ -125,6 +132,29 @@ def display_question():
 
     already_answered = st.session_state.current_question in st.session_state.answers
 
+    # --- TIMER LOGIC with auto-refresh ---
+    if "last_rendered_question" not in st.session_state or \
+            st.session_state.last_rendered_question != st.session_state.current_question:
+        st.session_state.question_start_time = time.time()
+        st.session_state.timer_expired = False
+        st.session_state.last_rendered_question = st.session_state.current_question
+
+    # --- TIMER ---
+    elapsed = int(time.time() - st.session_state.question_start_time)
+    remaining = 30 - elapsed
+
+    if remaining <= 0 and not st.session_state.timer_expired:
+        st.session_state.timer_expired = True
+        st.warning("⏰ Time's up! Moving to next question...")
+        time.sleep(1.5)
+        next_question()
+        st.rerun()
+
+    # Show timer info
+    if remaining > 0:
+        st.markdown(f"⏳ **Time left: {remaining} seconds**")
+        st.progress((30 - remaining) / 30)
+
     # --- Always show question number with prefix ---
     question_number = st.session_state.current_question + 1
     question_text = question["question"]
@@ -154,7 +184,8 @@ def display_question():
             index=index,
         )
 
-    submit_button = st.button("Submit", disabled=already_answered)
+    # 🔒 Disable Submit if already answered or time's up
+    submit_button = st.button("Submit", disabled=already_answered or st.session_state.timer_expired)
 
     if submit_button:
         st.session_state.answers[st.session_state.current_question] = question["options"].index(user_answer)
@@ -178,6 +209,11 @@ def display_question():
 
     st.write(f"Right answers: {st.session_state.right_answers}")
     st.write(f"Wrong answers: {st.session_state.wrong_answers}")
+
+    # 🌀 Auto-refresh countdown only if unanswered and timer is running
+    if remaining > 0 and not already_answered and not st.session_state.timer_expired:
+        time.sleep(1)
+        st.rerun()
 
 
 # --- Summary screen ---
@@ -240,6 +276,10 @@ def next_question():
 
     st.session_state.current_question += 1
 
+    # ⏱️ Reset timer for the next question
+    st.session_state.question_start_time = time.time()
+    st.session_state.timer_expired = False
+
     if st.session_state.current_question >= len(st.session_state.questions):
         try:
             next_q = get_quiz_from_topic(topic, api_key)
@@ -259,6 +299,10 @@ def next_question():
 def prev_question():
     if st.session_state.current_question > 0:
         st.session_state.current_question -= 1
+
+        # ⏱️ Reset timer when going back to a previous question
+        st.session_state.question_start_time = time.time()
+        st.session_state.timer_expired = False
 
 
 # --- Layout: Quiz and navigation ---
