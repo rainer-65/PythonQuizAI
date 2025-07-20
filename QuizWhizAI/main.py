@@ -6,6 +6,7 @@ import openai
 import streamlit as st
 from dotenv import load_dotenv
 
+from create_context_from_PDF import load_topic_contexts
 from firebase_service import initialize_firebase, save_quiz_question, get_random_quiz_questions, \
     delete_all_quiz_questions, get_quiz_question_count, is_duplicate_question
 from get_quiz import get_quiz_from_topic
@@ -46,6 +47,9 @@ topics = [
     'Reading input from the keyboard in Python', 'Strings in Python',
     'Print in Python', 'F-Strings in Python'
 ]
+# Load contextual content from PDFs once
+topic_contexts = load_topic_contexts(topics)
+
 st.sidebar.markdown(
     "<span style='font-size:18px; '>Select quiz topic</span>",
     unsafe_allow_html=True
@@ -81,7 +85,7 @@ if st.sidebar.button("Start Quiz"):
     st.session_state.quiz_complete = False
 
     try:
-        first_question = get_quiz_from_topic(topic, api_key)
+        first_question = get_quiz_from_topic(topic, api_key, topic_contexts.get(topic, []))
         if not first_question or not isinstance(first_question, dict):
             st.error("Failed to load a quiz question. Please try again.")
         else:
@@ -256,7 +260,7 @@ def show_summary():
         st.session_state.pop("max_questions_override", None)
 
         try:
-            first_question = get_quiz_from_topic(topic, api_key)
+            first_question = get_quiz_from_topic(topic, api_key, topic_contexts.get(topic, []))
             if first_question and isinstance(first_question, dict):
                 st.session_state.questions.append(first_question)
                 if save_to_db and not is_duplicate_question(first_question):
@@ -297,7 +301,7 @@ def next_question():
 
     if st.session_state.current_question >= len(st.session_state.questions):
         try:
-            next_q = get_quiz_from_topic(topic, api_key)
+            next_q = get_quiz_from_topic(topic, api_key, topic_contexts.get(topic, []))
             if not next_q or not isinstance(next_q, dict):
                 st.error("Failed to load the next quiz question.")
                 st.session_state.current_question -= 1

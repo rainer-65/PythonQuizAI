@@ -1,7 +1,7 @@
 import json
 import random
+from typing import Dict
 from typing import List
-from typing import Optional, Dict
 
 from openai import OpenAI, OpenAIError
 from openai.types.chat import ChatCompletionMessageParam
@@ -46,14 +46,27 @@ chat_history: List[ChatCompletionMessageParam] = [
 ]
 
 
-def get_quiz_from_topic(topic: str, api_key: str) -> Optional[Dict[str, str]]:
+def get_quiz_from_topic(topic: str, api_key: str, context_chunks: Optional[List[str]] = None) -> Optional[Dict[str, str]]:
+    context_chunks = context_chunks or []
+
     global chat_history
 
     client = OpenAI(api_key=api_key)
 
+    context_text = context_chunks[0] if context_chunks else ""
+
+    prompt = f"""
+    Use the following study material to create a quiz question about "{topic}".
+
+    Study Material:
+    {context_text}
+
+    Return a Python dictionary with keys: "question", "options", "answer", "explanation".
+    """
+
     current_user_message: ChatCompletionMessageParam = {
         "role": "user",
-        "content": f"GET /generate-random-question/{topic}",
+        "content": prompt.strip(),
     }
 
     current_chat = chat_history + [current_user_message]
