@@ -1,9 +1,11 @@
 import os
+
 import fitz  # PyMuPDF
 
 PDF_FOLDER = "pdfs"
 CHUNK_SIZE = 1000
 OVERLAP = 200
+
 
 def extract_text_from_pdf(pdf_path):
     """Extracts full text from a PDF file."""

@@ -1,7 +1,6 @@
 import json
 import random
-from typing import Dict
-from typing import List
+from typing import Dict, List, Optional
 
 from openai import OpenAI, OpenAIError
 from openai.types.chat import ChatCompletionMessageParam
@@ -46,7 +45,8 @@ chat_history: List[ChatCompletionMessageParam] = [
 ]
 
 
-def get_quiz_from_topic(topic: str, api_key: str, context_chunks: Optional[List[str]] = None) -> Optional[Dict[str, str]]:
+def get_quiz_from_topic(topic: str, api_key: str, context_chunks: Optional[List[str]] = None) -> Optional[
+    Dict[str, str]]:
     context_chunks = context_chunks or []
 
     global chat_history
