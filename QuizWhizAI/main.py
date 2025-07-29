@@ -321,8 +321,12 @@ def next_question():
 col_main, col_next = st.columns([8, 1])  # Wider main area, slim right column
 
 with col_next:
-    if not st.session_state.quiz_complete and st.button("Next"):
-        next_question()
+    if (
+            len(st.session_state.questions) > 0
+            and not st.session_state.quiz_complete
+    ):
+        if st.button("Next"):
+            next_question()
 
 with col_main:
     if st.session_state.quiz_complete:
