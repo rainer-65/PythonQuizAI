@@ -1,4 +1,4 @@
-import json
+import os
 import os
 import time
 
@@ -333,14 +333,6 @@ with col_main:
         show_summary()
     else:
         display_question()
-
-# --- Download quiz data ---
-st.sidebar.download_button(
-    "Download Quiz Data",
-    data=json.dumps(st.session_state.questions, indent=4),
-    file_name="quiz_session.json",
-    mime="application/json",
-)
 
 # --- Close App Button ---
 if st.sidebar.button("Close App"):
