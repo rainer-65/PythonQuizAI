@@ -8,8 +8,9 @@ from dotenv import load_dotenv
 
 from create_context_from_PDF import load_topic_contexts
 from firebase_service import initialize_firebase, save_quiz_question, get_random_quiz_questions, \
-    delete_all_quiz_questions, get_quiz_question_count, is_duplicate_question
+    get_quiz_question_count, is_duplicate_question
 from get_quiz import get_quiz_from_topic
+from export_quiz_to_PDF import generate_quiz_pdf
 
 # --- Initialize Firebase (do this once) ---
 initialize_firebase("firebase_credentials.json")
@@ -114,28 +115,6 @@ if st.sidebar.button("🎲 Load 10 Random Questions"):
             st.session_state.questions = random_questions
             st.session_state.max_questions_override = len(random_questions)
             st.success(f"{len(random_questions)} random questions loaded!")
-
-# --- Modal-like confirmation for deleting all questions ---
-if st.sidebar.button("🧹 Delete All Questions"):
-    st.session_state.confirm_delete_modal = True
-
-if st.session_state.get("confirm_delete_modal", False):
-    with st.sidebar.expander("⚠️ Confirm Deletion", expanded=True):
-        st.warning("This will permanently delete *all* quiz questions from the database!")
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            if st.button("✅ Yes, delete all"):
-                with st.spinner("Deleting all questions..."):
-                    success = delete_all_quiz_questions()
-                    if success:
-                        st.success("🗑️ All quiz questions deleted.")
-                    else:
-                        st.error("Failed to delete questions.")
-                st.session_state.confirm_delete_modal = False
-        with col2:
-            if st.button("❌ Cancel"):
-                st.info("Deletion cancelled.")
-                st.session_state.confirm_delete_modal = False
 
 
 def display_question():
@@ -250,6 +229,11 @@ def show_summary():
     - 🧠 Total Questions Answered: {total}
     - 🏁 Final Score: **{score:.1f}%**
     """)
+
+    # --- Option for PDF export ---
+    if st.button("Export PDF"):
+        generate_quiz_pdf(quiz_data, quiz_title="My Quiz", output_path="quiz.pdf")
+        st.success("Quiz exported!")
 
     if st.button("🔁 Restart Quiz"):
         # Reset session state

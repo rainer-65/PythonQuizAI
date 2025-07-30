@@ -2,7 +2,7 @@ import os
 
 import fitz  # PyMuPDF
 
-PDF_FOLDER = "pdfs"
+PDF_FOLDER = "gaddis_files"
 CHUNK_SIZE = 1000
 OVERLAP = 200
 

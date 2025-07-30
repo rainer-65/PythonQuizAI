@@ -63,19 +63,6 @@ def get_random_quiz_questions(limit=10) -> list:
         return []
 
 
-def delete_all_quiz_questions():
-    try:
-        db = firestore.client()
-        docs = db.collection("quiz_questions").stream()
-        for doc in docs:
-            doc.reference.delete()
-        print("🧹 All quiz questions deleted.")
-        return True
-    except Exception as e:
-        print(f"❌ Failed to delete quiz questions: {e}")
-        return False
-
-
 def get_quiz_question_count() -> int:
     try:
         db = firestore.client()
