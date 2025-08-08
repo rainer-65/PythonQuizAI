@@ -18,57 +18,15 @@ initialize_firebase("firebase_credentials.json")
 # --- Constants ---
 MAX_QUESTIONS = 10
 
-# --- Title ---
-st.image("https://www.python.org/static/community_logos/python-logo-master-v3-TM.png", width=200)
-st.markdown("<h1 style='text-align: center; color: #4B8BBE;'>Python Quiz</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center;'>Test your knowledge of Python fundamentals with this interactive quiz!</p>",
-            unsafe_allow_html=True)
-st.markdown("---")
-
 # --- Load Environment ---
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 
 
-# --- Session State Initialization ---
-def init_state():
-    defaults = {
-        "questions": [],
-        "answers": {},
-        "current_question": 0,
-        "right_answers": 0,
-        "wrong_answers": 0,
-        "quiz_complete": False,
-        "show_timer_expired_warning": False,
-        "question_start_time": time.time(),
-        "timer_expired": False,
-        "max_questions_override": MAX_QUESTIONS,
-        "quiz_data": []
-    }
-    for key, default in defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = default
+# --- FUNCTION DEFINITIONS ---
 
-
-init_state()
-
-# --- Topics ---
-topics = [
-    "Chapter01 Introduction to Computers and Programming", "Chapter02 Input, Processing, and Output",
-    "Chapter03 Decision Structures and Boolean Logic", "Chapter04 Repetition Structures",
-    "Chapter05 Functions", "Chapter06 Files and Exceptions", "Chapter07 Lists and Tuples",
-    "Chapter08 More About Strings", "Chapter09 Dictionaries and Sets"
-]
-topic_contexts = load_topic_contexts(topics)
-
-# --- Sidebar ---
-st.sidebar.markdown("<span style='font-size:18px;'>Select quiz topic</span>", unsafe_allow_html=True)
-topic = st.sidebar.selectbox("Select a topic", topics, index=0, label_visibility="collapsed")
-save_to_db = st.sidebar.checkbox("📂 Save questions to DB", value=True)
-st.sidebar.info(f"📦 Total number of quiz questions in DB: {get_quiz_question_count()}")
-
-
-def start_quiz(load_random=False):
+def start_quiz(topic, save_to_db, topic_contexts, load_random=False):
+    """Resets the quiz state and loads the first question(s)."""
     # Reset all relevant session state variables
     st.session_state.questions = []
     st.session_state.answers = {}
@@ -77,7 +35,6 @@ def start_quiz(load_random=False):
     st.session_state.wrong_answers = 0
     st.session_state.quiz_complete = False
     st.session_state.quiz_data = []
-
     st.session_state.show_timer_expired_warning = False
 
     if load_random:
@@ -93,15 +50,8 @@ def start_quiz(load_random=False):
             st.error("Failed to load a quiz question. Please try again.")
 
 
-if st.sidebar.button("Start Quiz"):
-    start_quiz()
-
-if st.sidebar.button("🎲 Load 10 Random Questions"):
-    start_quiz(load_random=True)
-    st.session_state.max_questions_override = 10
-
-
 def display_question():
+    """Displays the current question, options, and timer."""
     if not st.session_state.questions:
         st.info("Please start the quiz from the sidebar.")
         return
@@ -146,10 +96,8 @@ def display_question():
         st.markdown(q["question"])
 
     already_answered = i in st.session_state.answers
-
     options_to_display = q["options"]
 
-    user_answer = None
     if already_answered:
         correct_index = options_to_display.index(q["answer"])
         user_selection_index = st.session_state.answers[i]
@@ -167,7 +115,6 @@ def display_question():
                  index=user_selection_index,
                  format_func=lambda x: get_label(x, options_to_display.index(x)),
                  key=f"answered_{i}", disabled=True)
-
     else:
         user_answer = st.radio("Your answer:", options_to_display, key=i, disabled=st.session_state.timer_expired)
         if st.button("Submit", disabled=st.session_state.timer_expired):
@@ -194,19 +141,13 @@ def display_question():
         st.rerun()
 
 
-def next_question():
+def next_question(topic, save_to_db, topic_contexts):
+    """Moves to the next question or ends the quiz."""
     i = st.session_state.current_question
 
     if i not in st.session_state.answers:
         st.session_state.wrong_answers += 1
         st.session_state.answers[i] = -1  # Mark as skipped
-        st.markdown("""
-        <div style="background-color: #fff3cd; border-left: 6px solid #ffecb5; padding: 12px 16px; 
-        border-radius: 8px; font-size: 14px; line-height: 1.5;">
-            <strong>⚠️ Skipped!</strong> This question was not answered and has been marked as incorrect.
-        </div>
-        """, unsafe_allow_html=True)
-        time.sleep(1)
 
     q = st.session_state.questions[i]
     q['user_answer'] = q['options'][st.session_state.answers[i]] if st.session_state.answers[i] != -1 else 'Skipped'
@@ -225,28 +166,32 @@ def next_question():
     st.session_state.last_rendered_question = -1
 
     if st.session_state.current_question >= len(st.session_state.questions):
-        q = get_quiz_from_topic(topic, api_key, topic_contexts.get(topic, []))
-        if q:
-            st.session_state.questions.append(q)
-            if save_to_db and not is_duplicate_question(q):
-                save_quiz_question(topic, q)
+        q_next = get_quiz_from_topic(topic, api_key, topic_contexts.get(topic, []))
+        if q_next:
+            st.session_state.questions.append(q_next)
+            if save_to_db and not is_duplicate_question(q_next):
+                save_quiz_question(topic, q_next)
         else:
             st.error("Failed to load the next quiz question.")
             st.session_state.current_question -= 1
 
 
 def update_score():
+    """Recalculates the score based on answers."""
     st.session_state.right_answers = 0
     st.session_state.wrong_answers = 0
     for i, q in enumerate(st.session_state.questions):
-        if i in st.session_state.answers:
-            if st.session_state.answers[i] != -1 and q['options'][st.session_state.answers[i]] == q['answer']:
+        if i in st.session_state.answers and st.session_state.answers[i] != -1:
+            if q['options'][st.session_state.answers[i]] == q['answer']:
                 st.session_state.right_answers += 1
             else:
                 st.session_state.wrong_answers += 1
+        elif i in st.session_state.answers and st.session_state.answers[i] == -1:  # Skipped
+            st.session_state.wrong_answers += 1
 
 
-def show_summary():
+def show_summary(topic, save_to_db, topic_contexts):
+    """Displays the final quiz summary and options."""
     st.markdown("## 🎉 Quiz Complete!")
     st.success("You’ve reached the end of the quiz.")
     total = st.session_state.right_answers + st.session_state.wrong_answers
@@ -264,11 +209,63 @@ def show_summary():
         st.success("Quiz exported!")
 
     if st.button("🔁 Restart Quiz"):
-        start_quiz()
+        start_quiz(topic, save_to_db, topic_contexts)
         st.rerun()
 
 
-# --- Layout ---
+# --- Session State Initialization ---
+def init_state():
+    defaults = {
+        "questions": [], "answers": {}, "current_question": 0, "right_answers": 0,
+        "wrong_answers": 0, "quiz_complete": False, "show_timer_expired_warning": False,
+        "question_start_time": time.time(), "timer_expired": False,
+        "max_questions_override": MAX_QUESTIONS, "quiz_data": []
+    }
+    for key, default in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = default
+
+
+init_state()
+
+# --- App Layout & Logic ---
+
+# Title
+st.image("https://www.python.org/static/community_logos/python-logo-master-v3-TM.png", width=200)
+st.markdown("<h1 style='text-align: center; color: #4B8BBE;'>Python Quiz</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center;'>Test your knowledge of Python fundamentals!</p>", unsafe_allow_html=True)
+st.markdown("---")
+
+# Topics
+topics = [
+    "Chapter01 Introduction to Computers and Programming", "Chapter02 Input, Processing, and Output",
+    "Chapter03 Decision Structures and Boolean Logic", "Chapter04 Repetition Structures",
+    "Chapter05 Functions", "Chapter06 Files and Exceptions", "Chapter07 Lists and Tuples",
+    "Chapter08 More About Strings", "Chapter09 Dictionaries and Sets"
+]
+topic_contexts = load_topic_contexts(topics)
+
+# Sidebar
+st.sidebar.markdown("<span style='font-size:18px;'>Select quiz topic</span>", unsafe_allow_html=True)
+topic = st.sidebar.selectbox("Select a topic", topics, index=0, label_visibility="collapsed")
+save_to_db = st.sidebar.checkbox("📂 Save questions to DB", value=True)
+st.sidebar.info(f"📦 Total number of quiz questions in DB: {get_quiz_question_count()}")
+
+quiz_in_progress = bool(st.session_state.questions and not st.session_state.quiz_complete)
+
+if st.sidebar.button("🚀 Start Quiz", disabled=quiz_in_progress):
+    start_quiz(topic, save_to_db, topic_contexts)
+    st.rerun()
+
+if st.sidebar.button("🎲 Load 10 Random Questions", disabled=quiz_in_progress):
+    start_quiz(topic, save_to_db, topic_contexts, load_random=True)
+    st.rerun()
+
+if st.sidebar.button("❌ Close App"):
+    st.warning("Closing app...")
+    os._exit(0)
+
+# Main content
 col_main, col_next = st.columns([8, 1])
 
 if st.session_state.questions and not st.session_state.quiz_complete:
@@ -277,19 +274,14 @@ if st.session_state.questions and not st.session_state.quiz_complete:
 with col_next:
     if st.session_state.questions and not st.session_state.quiz_complete:
         if st.button("Next"):
-            next_question()
+            next_question(topic, save_to_db, topic_contexts)
             st.rerun()
 
 with col_main:
     if st.session_state.quiz_complete:
-        show_summary()
+        show_summary(topic, save_to_db, topic_contexts)
     else:
         display_question()
-        # This conditional check ensures the score is only shown during an active quiz
         if st.session_state.questions:
             st.write(f"Right answers: {st.session_state.right_answers}")
             st.write(f"Wrong answers: {st.session_state.wrong_answers}")
-
-if st.sidebar.button("Close App"):
-    st.warning("Closing app...")
-    os._exit(0)
