@@ -1,227 +1,256 @@
 import os
-import os
 import time
 
-import openai
 import streamlit as st
 from dotenv import load_dotenv
 
 from create_context_from_PDF import load_topic_contexts
-from firebase_service import initialize_firebase, save_quiz_question, get_random_quiz_questions, \
-    get_quiz_question_count, is_duplicate_question
-from get_quiz import get_quiz_from_topic
 from export_quiz_to_PDF import generate_quiz_pdf
+from firebase_service import (
+    initialize_firebase, save_quiz_question, get_random_quiz_questions,
+    get_quiz_question_count, is_duplicate_question
+)
+from get_quiz import get_quiz_from_topic
 
-# --- Initialize Firebase (do this once) ---
+# --- Initialize Firebase ---
 initialize_firebase("firebase_credentials.json")
 
 # --- Constants ---
-MAX_QUESTIONS = 10  # Set the maximum number of quiz questions
+MAX_QUESTIONS = 10
 
-# --- Title Section ---
+# --- Title ---
 st.image("https://www.python.org/static/community_logos/python-logo-master-v3-TM.png", width=200)
-st.markdown(
-    "<h1 style='text-align: center; color: #4B8BBE;'>Python Quiz</h1>",
-    unsafe_allow_html=True
-)
-st.markdown(
-    "<p style='text-align: center;'>Test your knowledge of Python fundamentals with this interactive quiz!</p>",
-    unsafe_allow_html=True
-)
+st.markdown("<h1 style='text-align: center; color: #4B8BBE;'>Python Quiz</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center;'>Test your knowledge of Python fundamentals with this interactive quiz!</p>",
+            unsafe_allow_html=True)
 st.markdown("---")
 
-# --- Load environment and initialize session state ---
+# --- Load Environment ---
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 
-# --- Initialize session state ---
-for key, default in {
-    "questions": [], "answers": {}, "current_question": 0,
-    "right_answers": 0, "wrong_answers": 0, "quiz_complete": False
-}.items():
-    if key not in st.session_state:
-        st.session_state[key] = default
 
-# --- SIDEBAR ---
-topics = ["Chapter01 Introduction to Computers and Programming", "Chapter02 Input, Processing, and Output",
-          "Chapter03 Decision Structures and Boolean Logic",
-          "Chapter04 Repetition Structures", "Chapter05 Functions", "Chapter06 Files and Exceptions",
-          "Chapter07 Lists and Tuples", "Chapter08 More About Strings",
-          "Chapter09 Dictionaries and Sets"]
-# Load contextual content from PDFs once
+# --- Session State Initialization ---
+def init_state():
+    defaults = {
+        "questions": [],
+        "answers": {},
+        "current_question": 0,
+        "right_answers": 0,
+        "wrong_answers": 0,
+        "quiz_complete": False,
+        "show_timer_expired_warning": False,
+        "question_start_time": time.time(),
+        "timer_expired": False,
+        "max_questions_override": MAX_QUESTIONS,
+        "quiz_data": []
+    }
+    for key, default in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = default
+
+
+init_state()
+
+# --- Topics ---
+topics = [
+    "Chapter01 Introduction to Computers and Programming", "Chapter02 Input, Processing, and Output",
+    "Chapter03 Decision Structures and Boolean Logic", "Chapter04 Repetition Structures",
+    "Chapter05 Functions", "Chapter06 Files and Exceptions", "Chapter07 Lists and Tuples",
+    "Chapter08 More About Strings", "Chapter09 Dictionaries and Sets"
+]
 topic_contexts = load_topic_contexts(topics)
 
-st.sidebar.markdown(
-    "<span style='font-size:18px; '>Select quiz topic</span>",
-    unsafe_allow_html=True
-)
-topic = st.sidebar.selectbox(
-    "Select a topic",
-    topics,
-    index=0,
-    label_visibility="collapsed"
-)
+# --- Sidebar ---
+st.sidebar.markdown("<span style='font-size:18px;'>Select quiz topic</span>", unsafe_allow_html=True)
+topic = st.sidebar.selectbox("Select a topic", topics, index=0, label_visibility="collapsed")
+save_to_db = st.sidebar.checkbox("📂 Save questions to DB", value=True)
+st.sidebar.info(f"📦 Total number of quiz questions in DB: {get_quiz_question_count()}")
 
-# --- Timer-related session state ---
-if "question_start_time" not in st.session_state:
-    st.session_state.question_start_time = time.time()
-if "timer_expired" not in st.session_state:
-    st.session_state.timer_expired = False
 
-# --- ✅ Toggle: Enable/Disable saving to Firestore ---
-save_to_db = st.sidebar.checkbox("💾 Save questions to DB", value=True)
-
-# ✅ --- Display current DB entry count in sidebar ---
-question_count = get_quiz_question_count()
-st.sidebar.info(f"📦 Total number of quiz questions in DB: {question_count}")
-
-# --- Start Quiz ---
-if st.sidebar.button("Start Quiz"):
-    # Reset session state
+def start_quiz(load_random=False):
+    # Reset all relevant session state variables
+    st.session_state.questions = []
     st.session_state.answers = {}
     st.session_state.current_question = 0
-    st.session_state.questions = []
     st.session_state.right_answers = 0
     st.session_state.wrong_answers = 0
     st.session_state.quiz_complete = False
+    st.session_state.quiz_data = []
 
-    try:
-        first_question = get_quiz_from_topic(topic, api_key, topic_contexts.get(topic, []))
-        if not first_question or not isinstance(first_question, dict):
-            st.error("Failed to load a quiz question. Please try again.")
-        else:
-            st.session_state.questions.append(first_question)
-            if save_to_db and not is_duplicate_question(first_question):
-                save_quiz_question(topic, first_question)
-    except openai.error.AuthenticationError:
-        st.error("Invalid API key.")
+    st.session_state.show_timer_expired_warning = False
 
-# --- Loading random questions ---
-if st.sidebar.button("🎲 Load 10 Random Questions"):
-    st.session_state.answers = {}
-    st.session_state.current_question = 0
-    st.session_state.questions = []
-    st.session_state.right_answers = 0
-    st.session_state.wrong_answers = 0
-    st.session_state.quiz_complete = False
-
-    if question_count < 10:
-        st.warning("❗Not enough questions in the database to load 10 random questions.")
+    if load_random:
+        st.session_state.questions = get_random_quiz_questions(10)
+        st.session_state.max_questions_override = len(st.session_state.questions)
     else:
-        random_questions = get_random_quiz_questions(10)
-        if not random_questions:
-            st.error("No questions found in Firestore.")
+        q = get_quiz_from_topic(topic, api_key, topic_contexts.get(topic, []))
+        if q:
+            st.session_state.questions.append(q)
+            if save_to_db and not is_duplicate_question(q):
+                save_quiz_question(topic, q)
         else:
-            st.session_state.questions = random_questions
-            st.session_state.max_questions_override = len(random_questions)
-            st.success(f"{len(random_questions)} random questions loaded!")
+            st.error("Failed to load a quiz question. Please try again.")
+
+
+if st.sidebar.button("Start Quiz"):
+    start_quiz()
+
+if st.sidebar.button("🎲 Load 10 Random Questions"):
+    start_quiz(load_random=True)
+    st.session_state.max_questions_override = 10
 
 
 def display_question():
-    if len(st.session_state.questions) == 0:
+    if not st.session_state.questions:
         st.info("Please start the quiz from the sidebar.")
         return
 
-    question = st.session_state.questions[st.session_state.current_question]
+    i = st.session_state.current_question
+    q = st.session_state.questions[i]
 
-    if question is None or not isinstance(question, dict):
+    if not isinstance(q, dict):
         st.error("There was a problem loading this question.")
         return
 
-    already_answered = st.session_state.current_question in st.session_state.answers
-
-    # --- TIMER LOGIC with auto-refresh ---
-    if "last_rendered_question" not in st.session_state or \
-            st.session_state.last_rendered_question != st.session_state.current_question:
+    if "last_rendered_question" not in st.session_state or st.session_state.last_rendered_question != i:
         st.session_state.question_start_time = time.time()
         st.session_state.timer_expired = False
-        st.session_state.last_rendered_question = st.session_state.current_question
+        st.session_state.last_rendered_question = i
 
-    # --- TIMER ---
     elapsed = int(time.time() - st.session_state.question_start_time)
     remaining = 30 - elapsed
 
     if remaining <= 0 and not st.session_state.timer_expired:
         st.session_state.timer_expired = True
+        st.session_state.show_timer_expired_warning = True
+        st.rerun()
+
+    if st.session_state.show_timer_expired_warning:
         st.warning("⏰ Time's up! Moving to next question...")
         time.sleep(1.5)
         next_question()
+        st.session_state.show_timer_expired_warning = False
         st.rerun()
 
-    # Show timer info
     if remaining > 0:
         st.markdown(f"⏳ **Time left: {remaining} seconds**")
         st.progress((30 - remaining) / 30)
 
-    # --- Always show question number with prefix ---
-    question_number = st.session_state.current_question + 1
-    question_text = question["question"]
-    question_label = f"**QUESTION {question_number}.**"
-
-    if "```" in question_text:
-        st.markdown(question_label, unsafe_allow_html=True)
-        st.markdown(question_text, unsafe_allow_html=True)
-    elif "\n" in question_text or "    " in question_text:
-        st.markdown(question_label)
-        st.code(question_text, language="python")
+    st.markdown(f"**QUESTION {i + 1}.**")
+    if "```" in q["question"]:
+        st.markdown(q["question"], unsafe_allow_html=True)
+    elif "\n" in q["question"] or "    " in q["question"]:
+        st.code(q["question"], language="python")
     else:
-        st.markdown(f"{question_label} {question_text}")
+        st.markdown(q["question"])
 
-    # --- Answer options ---
-    options = st.empty()
-    user_answer = options.radio(
-        "Your answer:", question["options"], key=st.session_state.current_question
-    )
+    already_answered = i in st.session_state.answers
+
+    options_to_display = q["options"]
+
+    user_answer = None
+    if already_answered:
+        correct_index = options_to_display.index(q["answer"])
+        user_selection_index = st.session_state.answers[i]
+
+        def get_label(option_text, option_index):
+            if option_index == user_selection_index and user_selection_index == correct_index:
+                return f"✅ {option_text}"
+            elif option_index == user_selection_index and user_selection_index != correct_index:
+                return f"❌ {option_text}"
+            elif option_index == correct_index:
+                return f"✅ {option_text}"
+            return option_text
+
+        st.radio("Your answer:", options_to_display,
+                 index=user_selection_index,
+                 format_func=lambda x: get_label(x, options_to_display.index(x)),
+                 key=f"answered_{i}", disabled=True)
+
+    else:
+        user_answer = st.radio("Your answer:", options_to_display, key=i, disabled=st.session_state.timer_expired)
+        if st.button("Submit", disabled=st.session_state.timer_expired):
+            st.session_state.answers[i] = options_to_display.index(user_answer)
+            st.rerun()
 
     if already_answered:
-        index = st.session_state.answers[st.session_state.current_question]
-        options.radio(
-            "Your answer:",
-            question["options"],
-            key=float(st.session_state.current_question),
-            index=index,
-        )
-
-    # 🔒 Disable Submit if already answered or time's up
-    submit_button = st.button("Submit", disabled=already_answered or st.session_state.timer_expired)
-
-    if submit_button:
-        st.session_state.answers[st.session_state.current_question] = question["options"].index(user_answer)
-
-        if user_answer == question["answer"]:
+        is_correct = options_to_display[st.session_state.answers[i]] == q["answer"]
+        if is_correct:
             st.success("✅ Correct!")
-            st.session_state.right_answers += 1
         else:
-            st.error(f"❌ Sorry, the correct answer was: **{question['answer']}**")
-            st.session_state.wrong_answers += 1
+            st.error(f"❌ Sorry, the correct answer was: **{q['answer']}**")
 
-        # --- Explanation block ---
         with st.expander("Explanation"):
-            explanation = question["explanation"]
-            if "```" in explanation:
-                st.markdown(explanation, unsafe_allow_html=True)
-            elif "\n" in explanation or "    " in explanation or "print(" in explanation:
-                st.code(explanation, language="python")
+            if "```" in q["explanation"]:
+                st.markdown(q["explanation"], unsafe_allow_html=True)
+            elif "\n" in q["explanation"] or "    " in q["explanation"] or "print(" in q["explanation"]:
+                st.code(q["explanation"], language="python")
             else:
-                st.write(explanation)
+                st.write(q["explanation"])
 
-    st.write(f"Right answers: {st.session_state.right_answers}")
-    st.write(f"Wrong answers: {st.session_state.wrong_answers}")
-
-    # 🌀 Auto-refresh countdown only if unanswered and timer is running
     if remaining > 0 and not already_answered and not st.session_state.timer_expired:
         time.sleep(1)
         st.rerun()
 
 
-# --- Summary screen ---
+def next_question():
+    i = st.session_state.current_question
+
+    if i not in st.session_state.answers:
+        st.session_state.wrong_answers += 1
+        st.session_state.answers[i] = -1  # Mark as skipped
+        st.markdown("""
+        <div style="background-color: #fff3cd; border-left: 6px solid #ffecb5; padding: 12px 16px; 
+        border-radius: 8px; font-size: 14px; line-height: 1.5;">
+            <strong>⚠️ Skipped!</strong> This question was not answered and has been marked as incorrect.
+        </div>
+        """, unsafe_allow_html=True)
+        time.sleep(1)
+
+    q = st.session_state.questions[i]
+    q['user_answer'] = q['options'][st.session_state.answers[i]] if st.session_state.answers[i] != -1 else 'Skipped'
+    q['is_correct'] = (q['user_answer'] == q['answer'])
+    st.session_state.quiz_data.append(q)
+
+    max_q = st.session_state.get("max_questions_override", MAX_QUESTIONS)
+
+    if i + 1 >= max_q:
+        st.session_state.quiz_complete = True
+        return
+
+    st.session_state.current_question += 1
+    st.session_state.question_start_time = time.time()
+    st.session_state.timer_expired = False
+    st.session_state.last_rendered_question = -1
+
+    if st.session_state.current_question >= len(st.session_state.questions):
+        q = get_quiz_from_topic(topic, api_key, topic_contexts.get(topic, []))
+        if q:
+            st.session_state.questions.append(q)
+            if save_to_db and not is_duplicate_question(q):
+                save_quiz_question(topic, q)
+        else:
+            st.error("Failed to load the next quiz question.")
+            st.session_state.current_question -= 1
+
+
+def update_score():
+    st.session_state.right_answers = 0
+    st.session_state.wrong_answers = 0
+    for i, q in enumerate(st.session_state.questions):
+        if i in st.session_state.answers:
+            if st.session_state.answers[i] != -1 and q['options'][st.session_state.answers[i]] == q['answer']:
+                st.session_state.right_answers += 1
+            else:
+                st.session_state.wrong_answers += 1
+
+
 def show_summary():
     st.markdown("## 🎉 Quiz Complete!")
     st.success("You’ve reached the end of the quiz.")
-
     total = st.session_state.right_answers + st.session_state.wrong_answers
     score = (st.session_state.right_answers / total) * 100 if total > 0 else 0
-
     st.markdown(f"""
     **📊 Your Stats:**
     - ✅ Correct Answers: {st.session_state.right_answers}
@@ -230,95 +259,37 @@ def show_summary():
     - 🏁 Final Score: **{score:.1f}%**
     """)
 
-    # --- Option for PDF export ---
     if st.button("Export PDF"):
-        generate_quiz_pdf(quiz_data, quiz_title="My Quiz", output_path="quiz.pdf")
+        generate_quiz_pdf(st.session_state.quiz_data, quiz_title="My Quiz", output_path="quiz.pdf")
         st.success("Quiz exported!")
 
     if st.button("🔁 Restart Quiz"):
-        # Reset session state
-        st.session_state.answers = {}
-        st.session_state.current_question = 0
-        st.session_state.questions = []
-        st.session_state.right_answers = 0
-        st.session_state.wrong_answers = 0
-        st.session_state.quiz_complete = False
-        st.session_state.pop("max_questions_override", None)
-
-        try:
-            first_question = get_quiz_from_topic(topic, api_key, topic_contexts.get(topic, []))
-            if first_question and isinstance(first_question, dict):
-                st.session_state.questions.append(first_question)
-                if save_to_db and not is_duplicate_question(first_question):
-                    save_quiz_question(topic, first_question)
-        except openai.error.AuthenticationError:
-            st.error("Invalid API key.")
-            return
-        st.rerun()  # ✅ Force a rerun to show the first question immediately
+        start_quiz()
+        st.rerun()
 
 
-# --- Navigation functions ---
-def next_question():
-    question_limit = st.session_state.get("max_questions_override", MAX_QUESTIONS)
-    current_index = st.session_state.current_question
+# --- Layout ---
+col_main, col_next = st.columns([8, 1])
 
-    # 🚨 If unanswered, mark as incorrect and warn the user
-    if current_index not in st.session_state.answers:
-        st.markdown(
-            """
-            <div style="background-color: #fff3cd; border-left: 6px solid #ffecb5; padding: 12px 16px 12px 8px; 
-            margin-bottom: 1.2rem; border-radius: 8px; font-size: 14px; line-height: 1.5;">
-                <strong>⚠️ Skipped!</strong> This question was not answered and has been marked as incorrect.
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-        st.session_state.wrong_answers += 1
-
-    if current_index + 1 >= question_limit:
-        st.session_state.quiz_complete = True
-        return
-
-    st.session_state.current_question += 1
-
-    # ⏱️ Reset timer for the next question
-    st.session_state.question_start_time = time.time()
-    st.session_state.timer_expired = False
-
-    if st.session_state.current_question >= len(st.session_state.questions):
-        try:
-            next_q = get_quiz_from_topic(topic, api_key, topic_contexts.get(topic, []))
-            if not next_q or not isinstance(next_q, dict):
-                st.error("Failed to load the next quiz question.")
-                st.session_state.current_question -= 1
-                return
-            st.session_state.questions.append(next_q)
-            if save_to_db and not is_duplicate_question(next_q):
-                save_quiz_question(topic, next_q)
-
-        except openai.error.AuthenticationError:
-            st.error("Invalid API key.")
-            st.session_state.current_question -= 1
-
-
-# --- Layout: Quiz and navigation ---
-col_main, col_next = st.columns([8, 1])  # Wider main area, slim right column
+if st.session_state.questions and not st.session_state.quiz_complete:
+    update_score()
 
 with col_next:
-    if (
-            len(st.session_state.questions) > 0
-            and not st.session_state.quiz_complete
-    ):
+    if st.session_state.questions and not st.session_state.quiz_complete:
         if st.button("Next"):
             next_question()
+            st.rerun()
 
 with col_main:
     if st.session_state.quiz_complete:
         show_summary()
     else:
         display_question()
+        # This conditional check ensures the score is only shown during an active quiz
+        if st.session_state.questions:
+            st.write(f"Right answers: {st.session_state.right_answers}")
+            st.write(f"Wrong answers: {st.session_state.wrong_answers}")
 
-# --- Close App Button ---
 if st.sidebar.button("Close App"):
     st.warning("Closing app...")
-    os._exit(0)  # Be cautious with this — abrupt termination
+    os._exit(0)
