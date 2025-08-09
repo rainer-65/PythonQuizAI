@@ -1,5 +1,6 @@
 import json
 import random
+from os import getenv
 from typing import Dict, List, Optional
 
 from openai import OpenAI, OpenAIError
@@ -72,8 +73,9 @@ def get_quiz_from_topic(topic: str, api_key: str, context_chunks: Optional[List[
     current_chat = chat_history + [current_user_message]
 
     try:
+        MODEL_ID = getenv("MODEL_ID", "chatgpt-4o-latest")
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model=MODEL_ID,
             messages=current_chat
         )
 

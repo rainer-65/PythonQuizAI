@@ -219,7 +219,8 @@ def init_state():
         "questions": [], "answers": {}, "current_question": 0, "right_answers": 0,
         "wrong_answers": 0, "quiz_complete": False, "show_timer_expired_warning": False,
         "question_start_time": time.time(), "timer_expired": False,
-        "max_questions_override": MAX_QUESTIONS, "quiz_data": []
+        "max_questions_override": MAX_QUESTIONS, "quiz_data": [],
+        "app_closed": False
     }
     for key, default in defaults.items():
         if key not in st.session_state:
@@ -235,6 +236,15 @@ st.image("https://www.python.org/static/community_logos/python-logo-master-v3-TM
 st.markdown("<h1 style='text-align: center; color: #4B8BBE;'>Python Quiz</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center;'>Test your knowledge of Python fundamentals!</p>", unsafe_allow_html=True)
 st.markdown("---")
+
+# --- Closed screen check ---
+if st.session_state.get("app_closed", False):
+    st.markdown("## ✅ App Closed")
+    st.info("This app is now closed. You can safely close this browser tab or reopen the app to continue.")
+    if st.button("🔓 Reopen app"):
+        st.session_state.app_closed = False
+        st.rerun()
+    st.stop()
 
 # Topics
 topics = [
@@ -261,9 +271,12 @@ if st.sidebar.button("🎲 Load 10 Random Questions", disabled=quiz_in_progress)
     start_quiz(topic, save_to_db, topic_contexts, load_random=True)
     st.rerun()
 
-if st.sidebar.button("❌ Close App"):
-    st.warning("Closing app...")
-    os._exit(0)
+# Allow closing only when NO quiz is in progress (i.e., before start or after completion)
+close_disabled = quiz_in_progress or st.session_state.app_closed
+
+if st.sidebar.button("❌ Close App", disabled=close_disabled):
+    st.session_state.app_closed = True
+    st.rerun()
 
 # Main content
 col_main, col_next = st.columns([8, 1])
