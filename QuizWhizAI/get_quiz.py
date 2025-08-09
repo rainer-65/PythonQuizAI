@@ -76,7 +76,11 @@ def get_quiz_from_topic(topic: str, api_key: str, context_chunks: Optional[List[
         MODEL_ID = getenv("MODEL_ID", "chatgpt-4o-latest")
         response = client.chat.completions.create(
             model=MODEL_ID,
-            messages=current_chat
+            messages=current_chat,
+            temperature=0.7,  # controls randomness (0 = deterministic, 1 = creative)
+            top_p=0.95,  # nucleus sampling (lower = less variety)
+            presence_penalty=0.4,  # encourage new topics, range is between [-2, +2]
+            frequency_penalty=0.3  # discourage repeating phrases, range is between [-2, +2]
         )
 
         content = response.choices[0].message.content
