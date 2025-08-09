@@ -50,10 +50,23 @@ def start_quiz(topic, save_to_db, topic_contexts, load_random=False):
             st.error("Failed to load a quiz question. Please try again.")
 
 
-def display_question():
+def display_question(topic, save_to_db, topic_contexts):
     """Displays the current question, options, and timer."""
     if not st.session_state.questions:
-        st.info("Please start the quiz from the sidebar.")
+        st.markdown("""
+        <div style='
+            background-color: #eaf4fc;
+            color: #31708f;
+            border: 1px solid #bce8f1;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+        '>
+            <div style='font-size: 20px; font-weight: bold;'>🏆 Welcome to the Python Quiz!</div>
+            <div style='font-size: 16px;'>🤔 Please start a new quiz or load existing questions from the sidebar.</div>
+        </div>
+        """, unsafe_allow_html=True)
+
         return
 
     i = st.session_state.current_question
@@ -79,7 +92,7 @@ def display_question():
     if st.session_state.show_timer_expired_warning:
         st.warning("⏰ Time's up! Moving to next question...")
         time.sleep(1.5)
-        next_question()
+        next_question(topic, save_to_db, topic_contexts)
         st.session_state.show_timer_expired_warning = False
         st.rerun()
 
@@ -256,7 +269,7 @@ topics = [
 topic_contexts = load_topic_contexts(topics)
 
 # Sidebar
-st.sidebar.markdown("<span style='font-size:18px;'>Select quiz topic</span>", unsafe_allow_html=True)
+st.sidebar.markdown("<span style='font-size: 18px;'>Select a quiz topic</span>", unsafe_allow_html=True)
 topic = st.sidebar.selectbox("Select a topic", topics, index=0, label_visibility="collapsed")
 save_to_db = st.sidebar.checkbox("📂 Save questions to DB", value=True)
 st.sidebar.info(f"📦 Total number of quiz questions in DB: {get_quiz_question_count()}")
@@ -294,7 +307,7 @@ with col_main:
     if st.session_state.quiz_complete:
         show_summary(topic, save_to_db, topic_contexts)
     else:
-        display_question()
+        display_question(topic, save_to_db, topic_contexts)
         if st.session_state.questions:
             st.write(f"Right answers: {st.session_state.right_answers}")
             st.write(f"Wrong answers: {st.session_state.wrong_answers}")
