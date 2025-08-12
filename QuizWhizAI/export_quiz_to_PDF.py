@@ -18,20 +18,28 @@ class QuizPDF(FPDF, HTMLMixin):
         self.cell(0, 10, f"Page {self.page_no()}/{{nb}}", align="C")
 
 
-def generate_quiz_pdf(quiz_data, quiz_title="Quiz", output_path="quiz.pdf"):
+def generate_quiz_pdf(quiz_data, quiz_title="Python quiz and solutions", output_path="quiz.pdf"):
     pdf = QuizPDF(quiz_title)
     pdf.alias_nb_pages()
     pdf.add_page()
     pdf.set_font("Helvetica", size=12)
 
     # Quiz Questions Section
+    avail = pdf.w - pdf.l_margin - pdf.r_margin
+    indent = 4
+
     for idx, q in enumerate(quiz_data, start=1):
         pdf.set_font("Helvetica", "B", 12)
-        pdf.multi_cell(0, 8, f"{idx}. {q['question']}")
+        pdf.set_x(pdf.l_margin)
+        pdf.multi_cell(avail, 8, f"{idx}. {q['question']}")
+
         pdf.set_font("Helvetica", "", 11)
         if q.get("options"):
             for opt in q["options"]:
-                pdf.multi_cell(0, 6, f"    - {opt}")
+                option_width = avail - indent
+                if option_width > 0:
+                    pdf.set_x(pdf.l_margin + indent)
+                    pdf.multi_cell(option_width, 6, f"- {opt}")
         pdf.ln(3)
 
     # Answers and Explanations Section
@@ -42,9 +50,11 @@ def generate_quiz_pdf(quiz_data, quiz_title="Quiz", output_path="quiz.pdf"):
 
     for idx, q in enumerate(quiz_data, start=1):
         pdf.set_font("Helvetica", "B", 12)
+        pdf.set_x(pdf.l_margin)
         pdf.multi_cell(0, 7, f"{idx}. Correct Answer: {q['answer']}")
         pdf.set_font("Helvetica", "", 11)
         explanation = q.get("explanation", "No explanation provided.")
+        pdf.set_x(pdf.l_margin)
         pdf.multi_cell(0, 6, f"Explanation: {explanation}")
         pdf.ln(3)
 

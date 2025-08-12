@@ -218,7 +218,7 @@ def show_summary(topic, save_to_db, topic_contexts):
     """)
 
     if st.button("Export PDF"):
-        generate_quiz_pdf(st.session_state.quiz_data, quiz_title="My Quiz", output_path="quiz.pdf")
+        generate_quiz_pdf(st.session_state.quiz_data)
         st.success("Quiz exported!")
 
 
