@@ -221,10 +221,6 @@ def show_summary(topic, save_to_db, topic_contexts):
         generate_quiz_pdf(st.session_state.quiz_data, quiz_title="My Quiz", output_path="quiz.pdf")
         st.success("Quiz exported!")
 
-    if st.button("🔁 Restart Quiz"):
-        start_quiz(topic, save_to_db, topic_contexts)
-        st.rerun()
-
 
 # --- Session State Initialization ---
 def init_state():
