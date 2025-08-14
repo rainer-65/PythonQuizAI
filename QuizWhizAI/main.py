@@ -265,9 +265,12 @@ topics = [
 topic_contexts = load_topic_contexts(topics)
 
 # Sidebar
-st.sidebar.markdown("<span style='font-size: 18px;'>Select a quiz topic</span>", unsafe_allow_html=True)
-topic = st.sidebar.selectbox("Select a topic", topics, index=0, label_visibility="collapsed")
-save_to_db = st.sidebar.checkbox("📂 Save questions to DB", value=True)
+with st.sidebar.expander("Please select a topic", expanded=True):
+    topic = st.radio("Topic", topics, index=0, label_visibility="collapsed")
+
+save_to_db = False
+# st.sidebar.checkbox("📂 Save questions to DB", value=True)  disabled because of synch problems when deployed
+
 st.sidebar.info(f"📦 Total number of quiz questions in DB: {get_quiz_question_count()}")
 
 quiz_in_progress = bool(st.session_state.questions and not st.session_state.quiz_complete)
@@ -276,7 +279,7 @@ if st.sidebar.button("🚀 Start Quiz", disabled=quiz_in_progress):
     start_quiz(topic, save_to_db, topic_contexts)
     st.rerun()
 
-if st.sidebar.button("🎲 Load 10 Random Questions", disabled=quiz_in_progress):
+if st.sidebar.button("🎲 Load 10 Random Questions (from whole DB)", disabled=quiz_in_progress):
     start_quiz(topic, save_to_db, topic_contexts, load_random=True)
     st.rerun()
 
