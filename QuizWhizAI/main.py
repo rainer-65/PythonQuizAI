@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 
 from create_context_from_PDF import load_topic_contexts
 from export_quiz_to_PDF import generate_quiz_pdf
-from firebase_service import (
+from firebase_backend import (
     initialize_firebase, save_quiz_question, get_random_quiz_questions,
     get_quiz_question_count, is_duplicate_question
 )
@@ -268,8 +268,9 @@ topic_contexts = load_topic_contexts(topics)
 with st.sidebar.expander("Please select a topic", expanded=True):
     topic = st.radio("Topic", topics, index=0, label_visibility="collapsed")
 
-save_to_db = False
-# st.sidebar.checkbox("📂 Save questions to DB", value=True)  disabled because of synch problems when deployed
+save_to_db = True
+st.sidebar.checkbox("📂 Save questions to DB", value=True)
+# disabled because of synch problems when deployed
 
 st.sidebar.info(f"📦 Total number of quiz questions in DB: {get_quiz_question_count()}")
 
@@ -279,7 +280,8 @@ if st.sidebar.button("🚀 Start Quiz", disabled=quiz_in_progress):
     start_quiz(topic, save_to_db, topic_contexts)
     st.rerun()
 
-if st.sidebar.button("🎲 Load 10 Random Questions (from whole DB)", disabled=quiz_in_progress):
+# Make the button text reflect snapshot instead of DB
+if st.sidebar.button("🎲 Load 10 Random Questions (from snapshot)", disabled=quiz_in_progress):
     start_quiz(topic, save_to_db, topic_contexts, load_random=True)
     st.rerun()
 

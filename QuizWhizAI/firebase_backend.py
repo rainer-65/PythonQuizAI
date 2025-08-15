@@ -38,14 +38,14 @@ def is_duplicate_question(new_question: dict) -> bool:
 
 def save_quiz_question(topic: str, question_data: dict) -> str:
     # Disabled for deployment – skipping database save
-    # try:
-    #     db = firestore.client()
-    #     question_data_with_topic = {**question_data, "topic": topic}
-    #     doc_ref = db.collection("quiz_questions").add(question_data_with_topic)
-    #     return doc_ref[1].id
-    # except Exception as e:
-    #     logger.debug(f"❌ Failed to save question: {e}")
-    #     return ""
+    try:
+        db = firestore.client()
+        question_data_with_topic = {**question_data, "topic": topic}
+        doc_ref = db.collection("quiz_questions").add(question_data_with_topic)
+        return doc_ref[1].id
+    except Exception as e:
+        logger.debug(f"❌ Failed to save question: {e}")
+        return ""
     return ""
 
 
